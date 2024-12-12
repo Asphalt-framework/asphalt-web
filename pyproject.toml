@@ -119,6 +119,7 @@ extend-select = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["asphalt.web"]
+known-third-party = ["asphalt.core"]
 
 [tool.mypy]
 python_version = "3.8"
