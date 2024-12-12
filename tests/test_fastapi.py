@@ -8,6 +8,7 @@ import pytest
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
 from asphalt.core import (
     Component,
+    ComponentStartError,
     Context,
     add_resource,
     get_resource_nowait,
@@ -154,7 +155,7 @@ async def test_missing_type_annotation():
 
     async with Context():
         with pytest.raises(
-            TypeError,
+            ComponentStartError,
             match="Dependency 'bad_resource' in endpoint / is missing a type annotation",
         ):
             await start_component(FastAPIComponent, {"app": application})

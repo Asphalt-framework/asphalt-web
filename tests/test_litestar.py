@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Sequence
-from typing import Any, Dict
+from typing import Any
 
 import pytest
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
@@ -27,7 +27,7 @@ from .test_asgi3 import TextReplacerMiddleware
 if not skip:
 
     @get("/", media_type=MediaType.JSON)
-    async def root(request: Request) -> Dict[str, Any]:  # noqa: UP006
+    async def root(request: Request) -> dict[str, Any]:
         my_resource = get_resource_nowait(str)
         another_resource = get_resource_nowait(str, "another")
         get_resource_nowait(HTTPScope)
@@ -39,7 +39,7 @@ if not skip:
         }
 
     @websocket_listener("/ws")
-    async def ws_root(data: str) -> Dict[str, Any]:  # noqa: UP006
+    async def ws_root(data: str) -> dict[str, Any]:
         my_resource = get_resource_nowait(str)
         another_resource = get_resource_nowait(str, "another")
         get_resource_nowait(WebSocketScope)
@@ -170,7 +170,7 @@ async def test_dependency_injection(unused_tcp_port: int) -> None:
             "another_resource": AsphaltProvide(str, "another"),
         },
     )
-    async def root(request: Request, my_resource: str, another_resource: str) -> Dict[str, Any]:  # noqa: UP006
+    async def root(request: Request, my_resource: str, another_resource: str) -> dict[str, Any]:
         my_resource = get_resource_nowait(str)
         another_resource = get_resource_nowait(str, "another")
         get_resource_nowait(HTTPScope)
