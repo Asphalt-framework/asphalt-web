@@ -3,6 +3,11 @@ Version history
 
 This library adheres to `Semantic Versioning 2.0 <http://semver.org/>`_.
 
+**UNRELEASED**
+
+- Migrated to Asphalt 5
+- Dropped Python 3.8 support
+
 **1.3.1**
 
 - Fixed Starlette/FastAPI request resource being added under the wrong type since
