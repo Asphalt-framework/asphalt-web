@@ -29,7 +29,7 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "asphalt ~= 4.8",
+    "asphalt @ git+https://github.com/asphalt-framework/asphalt@5.0",
 ]
 dynamic = ["version"]
 
