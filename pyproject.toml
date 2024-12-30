@@ -99,10 +99,6 @@ starlette = "asphalt.web.starlette:StarletteComponent"
 version_scheme = "post-release"
 local_scheme = "dirty-tag"
 
-[tool.pytest.ini_options]
-addopts = ["-rsfE", "--tb=short"]
-testpaths = ["tests"]
-
 [tool.ruff]
 line-length = 99
 
@@ -125,8 +121,15 @@ ignore = [
 known-first-party = ["asphalt.web"]
 known-third-party = ["asphalt.core"]
 
+[tool.pytest.ini_options]
+addopts = ["-rsfE", "--tb=short"]
+testpaths = ["tests"]
+
 [tool.mypy]
 python_version = "3.9"
+strict = true
+explicit_package_bases = true
+mypy_path = ["src", "tests", "examples"]
 
 [tool.coverage.run]
 source = ["asphalt.web"]
@@ -144,10 +147,6 @@ skip_missing_interpreters = true
 commands = [["python", "-m", "pytest", { replace = "posargs", extend = true }]]
 package = "editable"
 extras = ["test"]
-
-[tool.tox.env.pyright]
-deps = ["pyright"]
-commands = [["pyright", "--verifytypes", "asphalt.exceptions"]]
 
 [tool.tox.env.docs]
 commands = [["sphinx-build", "-W", "-n", "docs", "build/sphinx", { replace = "posargs", extend = true }]]
