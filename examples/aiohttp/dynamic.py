@@ -1,7 +1,7 @@
 from aiohttp.abc import Request
 from aiohttp.web_app import Application
 from aiohttp.web_response import Response
-from asphalt.core import Component, Context, inject, resource
+from asphalt.core import Component, inject, resource
 
 
 async def root(request: Request) -> Response:
@@ -10,5 +10,5 @@ async def root(request: Request) -> Response:
 
 class WebRootComponent(Component):
     @inject
-    async def start(self, ctx: Context, app: Application = resource()) -> None:
+    async def start(self, app: Application = resource()) -> None:
         app.router.add_route("GET", "/", root)

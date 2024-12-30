@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
-from asphalt.core import Context, current_context, resolve_reference
+from asphalt.core import Context, add_resource, resolve_reference
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -16,16 +16,16 @@ from asphalt.web.asgi3 import ASGIComponent
 
 class AsphaltMiddleware(BaseHTTPMiddleware):
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        async with Context() as ctx:
+        async with Context():
             if scope["type"] == "http":
-                ctx.add_resource(scope, types=[HTTPScope])
+                add_resource(scope, types=[HTTPScope])
             elif scope["type"] == "websocket":
-                ctx.add_resource(scope, types=[WebSocketScope])
+                add_resource(scope, types=[WebSocketScope])
 
             await super().__call__(scope, receive, send)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        current_context().add_resource(request, types=[Request])
+        add_resource(request, types=[Request])
         return await call_next(request)
 
 
@@ -46,7 +46,6 @@ class StarletteComponent(ASGIComponent[Starlette]):
 
     def __init__(
         self,
-        components: dict[str, dict[str, Any] | None] | None = None,
         *,
         app: Starlette | None = None,
         host: str = "127.0.0.1",
@@ -56,7 +55,6 @@ class StarletteComponent(ASGIComponent[Starlette]):
     ) -> None:
         debug = debug if isinstance(debug, bool) else __debug__
         super().__init__(
-            components,
             app=app or Starlette(debug=debug),
             host=host,
             port=port,

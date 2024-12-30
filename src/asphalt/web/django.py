@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from asgiref.typing import ASGI3Application, HTTPScope
-from asphalt.core import Context
+from asphalt.core import Context, add_resource
 from django.core.handlers.asgi import ASGIHandler, ASGIRequest
 from django.http import HttpRequest, HttpResponse
 from django.utils.decorators import async_only_middleware
@@ -14,10 +14,10 @@ from .asgi3 import ASGIComponent
 @async_only_middleware
 def AsphaltMiddleware(get_response: Callable[[HttpRequest], Awaitable[HttpResponse]]):
     async def middleware(request: HttpRequest) -> HttpResponse:
-        async with Context() as ctx:
-            ctx.add_resource(request)
+        async with Context():
+            add_resource(request)
             if isinstance(request, ASGIRequest):
-                ctx.add_resource(request.scope, types=[HTTPScope])
+                add_resource(request.scope, types=[HTTPScope])
 
             return await get_response(request)
 

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from asyncio import create_task, sleep
-from collections.abc import AsyncGenerator, Callable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from inspect import isfunction
 from typing import Any, Generic, TypeVar
 
-import uvicorn
+import anyio
+import sniffio
 from asgiref.typing import (
     ASGI3Application,
     ASGIReceiveCallable,
@@ -16,12 +16,15 @@ from asgiref.typing import (
     WebSocketScope,
 )
 from asphalt.core import (
-    ContainerComponent,
+    Component,
     Context,
-    context_teardown,
+    add_resource,
     resolve_reference,
+    start_service_task,
 )
-from uvicorn import Config
+from hypercorn import Config
+
+from ._utils import ensure_server_running
 
 T_Application = TypeVar("T_Application", bound=ASGI3Application)
 
@@ -43,17 +46,17 @@ class AsphaltMiddleware:
         self, scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     ) -> None:
         if scope["type"] in ("http", "websocket"):
-            async with Context() as ctx:
+            async with Context():
                 scope_type = HTTPScope if scope["type"] == "http" else WebSocketScope
-                ctx.add_resource(scope, types=[scope_type])
+                add_resource(scope, types=[scope_type])
                 await self.app(scope, receive, send)
         else:
             await self.app(scope, receive, send)
 
 
-class ASGIComponent(ContainerComponent, Generic[T_Application]):
+class ASGIComponent(Component, Generic[T_Application]):
     """
-    A component that serves the given ASGI 3.0 application via Uvicorn.
+    A component that serves the given ASGI 3.0 application via Hypercorn.
 
     :param app: the ASGI application to serve, or a module:varname reference to one
     :type app: asgiref.typing.ASGI3Application | str
@@ -65,14 +68,12 @@ class ASGIComponent(ContainerComponent, Generic[T_Application]):
 
     def __init__(
         self,
-        components: dict[str, dict[str, Any] | None] | None = None,
         *,
         app: T_Application | str,
         host: str = "127.0.0.1",
         port: int = 8000,
         middlewares: Sequence[Callable[..., ASGI3Application] | dict[str, Any]] = (),
     ) -> None:
-        super().__init__(components)
         self.app: T_Application = resolve_reference(app)
         self.original_app = self.app
         self.host = host
@@ -108,17 +109,17 @@ class ASGIComponent(ContainerComponent, Generic[T_Application]):
         else:
             raise TypeError(f"middleware must be either a callable or a dict, not {middleware!r}")
 
-    async def start(self, ctx: Context) -> None:
+    async def prepare(self) -> None:
         types = [ASGI3Application]
         if not isfunction(self.original_app):
             types.append(type(self.original_app))
 
-        ctx.add_resource(self.original_app, types=types)
-        await super().start(ctx)
-        await self.start_server(ctx)
+        add_resource(self.original_app, types=types)
 
-    @context_teardown
-    async def start_server(self, ctx: Context) -> AsyncGenerator[None, Exception | None]:
+    async def start(self) -> None:
+        await self.start_server()
+
+    async def start_server(self) -> None:
         """
         Start the HTTP server.
 
@@ -128,21 +129,17 @@ class ASGIComponent(ContainerComponent, Generic[T_Application]):
         implementation after the middleware has been added.
 
         """
-        config = Config(
-            app=self.app,
-            host=self.host,
-            port=self.port,
-            use_colors=False,
-            log_config=None,
-            lifespan="off",
+        config = Config()
+        config.bind = [f"{self.host}:{self.port}"]
+        shutdown_event = anyio.Event()
+        if sniffio.current_async_library() == "trio":
+            from hypercorn.trio import serve
+        else:
+            from hypercorn.asyncio import serve
+
+        await start_service_task(
+            lambda: serve(self.app, config, shutdown_trigger=shutdown_event.wait, mode="asgi"),
+            name="Hypercorn server",
+            teardown_action=shutdown_event.set,
         )
-        server = uvicorn.Server(config)
-        server.install_signal_handlers = lambda: None
-        server_task = create_task(server.serve())
-        while not server.started:
-            await sleep(0)
-
-        yield
-
-        server.should_exit = True
-        await server_task
+        await ensure_server_running(self.host, self.port)

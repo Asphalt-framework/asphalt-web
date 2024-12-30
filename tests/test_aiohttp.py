@@ -4,7 +4,15 @@ import json
 
 import pytest
 import websockets
-from asphalt.core import Component, Context, inject, require_resource, resource
+from asphalt.core import (
+    Component,
+    Context,
+    add_resource,
+    get_resource_nowait,
+    inject,
+    resource,
+    start_component,
+)
 from httpx import AsyncClient
 
 try:
@@ -17,6 +25,13 @@ try:
     from asphalt.web.aiohttp import AIOHTTPComponent
 except ModuleNotFoundError:
     pytestmark = pytest.mark.skip("aiohttp not available")
+else:
+    pytestmark = pytest.mark.anyio
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
 
 
 def setup_text_replacer(app, *, text: str, replacement: str) -> None:
@@ -30,7 +45,6 @@ def setup_text_replacer(app, *, text: str, replacement: str) -> None:
 
 
 @pytest.mark.parametrize("method", ["static", "dynamic"])
-@pytest.mark.asyncio
 async def test_http(unused_tcp_port: int, method: str):
     @inject
     async def root(
@@ -53,21 +67,26 @@ async def test_http(unused_tcp_port: int, method: str):
     else:
 
         class RouteComponent(Component):
-            async def start(self, ctx: Context) -> None:
-                app = require_resource(Application)
+            async def start(self) -> None:
+                app = get_resource_nowait(Application)
                 app.router.add_route("GET", "/", root)
 
         components = {"myroutes": {"type": RouteComponent}}
 
-    async with Context() as ctx, AsyncClient() as http:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await AIOHTTPComponent(components=components, app=application, port=unused_tcp_port).start(
-            ctx
+    async with Context(), AsyncClient() as http:
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            AIOHTTPComponent,
+            {
+                "components": components,
+                "app": application,
+                "port": unused_tcp_port,
+            },
         )
 
         # Ensure that the application got added as a resource
-        ctx.require_resource(Application)
+        get_resource_nowait(Application)
 
         response = await http.get(
             f"http://127.0.0.1:{unused_tcp_port}", params={"param": "Hello World"}
@@ -81,7 +100,6 @@ async def test_http(unused_tcp_port: int, method: str):
 
 
 @pytest.mark.parametrize("method", ["static", "dynamic"])
-@pytest.mark.asyncio
 async def test_ws(unused_tcp_port: int, method: str):
     @inject
     async def ws_root(
@@ -108,21 +126,26 @@ async def test_ws(unused_tcp_port: int, method: str):
     else:
 
         class RouteComponent(Component):
-            async def start(self, ctx: Context) -> None:
-                app = require_resource(Application)
+            async def start(self) -> None:
+                app = get_resource_nowait(Application)
                 app.router.add_route("GET", "/", ws_root)
 
         components = {"myroutes": {"type": RouteComponent}}
 
-    async with Context() as ctx:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await AIOHTTPComponent(components=components, app=application, port=unused_tcp_port).start(
-            ctx
+    async with Context():
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            AIOHTTPComponent,
+            {
+                "components": components,
+                "app": application,
+                "port": unused_tcp_port,
+            },
         )
 
         # Ensure that the application got added as a resource
-        ctx.require_resource(Application)
+        get_resource_nowait(Application)
 
         async with websockets.connect(f"ws://localhost:{unused_tcp_port}") as ws:
             await ws.send("World")
@@ -135,7 +158,6 @@ async def test_ws(unused_tcp_port: int, method: str):
 
 
 @pytest.mark.parametrize("method", ["direct", "dict"])
-@pytest.mark.asyncio
 async def test_middleware(unused_tcp_port: int, method: str):
     @middleware
     async def text_replacer(request: Request, handler) -> None:
@@ -160,15 +182,20 @@ async def test_middleware(unused_tcp_port: int, method: str):
             }
         ]
 
-    async with Context() as ctx, AsyncClient() as http:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await AIOHTTPComponent(
-            app=application, port=unused_tcp_port, middlewares=middlewares
-        ).start(ctx)
+    async with Context(), AsyncClient() as http:
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            AIOHTTPComponent,
+            {
+                "middlewares": middlewares,
+                "app": application,
+                "port": unused_tcp_port,
+            },
+        )
 
         # Ensure that the application got added as a resource
-        ctx.require_resource(Application)
+        get_resource_nowait(Application)
 
         response = await http.get(
             f"http://127.0.0.1:{unused_tcp_port}", params={"param": "Hello World"}

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Sequence
-from typing import Any, Dict
+from typing import Any
 
 import pytest
-import websockets
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
-from asphalt.core import Component, Context, require_resource
+from asphalt.core import Component, Context, add_resource, get_resource_nowait, start_component
 from httpx import AsyncClient
+from httpx_ws import aconnect_ws
 
 try:
     from litestar import Litestar, MediaType, Request, get, websocket_listener
@@ -19,17 +19,19 @@ try:
 except ModuleNotFoundError:
     pytestmark = pytest.mark.skip("litestar not available")
     skip = True
+else:
+    pytestmark = pytest.mark.anyio
 
 from .test_asgi3 import TextReplacerMiddleware
 
 if not skip:
 
     @get("/", media_type=MediaType.JSON)
-    async def root(request: Request) -> Dict[str, Any]:  # noqa: UP006
-        my_resource = require_resource(str)
-        another_resource = require_resource(str, "another")
-        require_resource(HTTPScope)
-        require_resource(Request)
+    async def root(request: Request) -> dict[str, Any]:
+        my_resource = get_resource_nowait(str)
+        another_resource = get_resource_nowait(str, "another")
+        get_resource_nowait(HTTPScope)
+        get_resource_nowait(Request)
         return {
             "message": request.query_params["param"],
             "my resource": my_resource,
@@ -37,10 +39,10 @@ if not skip:
         }
 
     @websocket_listener("/ws")
-    async def ws_root(data: str) -> Dict[str, Any]:  # noqa: UP006
-        my_resource = require_resource(str)
-        another_resource = require_resource(str, "another")
-        require_resource(WebSocketScope)
+    async def ws_root(data: str) -> dict[str, Any]:
+        my_resource = get_resource_nowait(str)
+        another_resource = get_resource_nowait(str, "another")
+        get_resource_nowait(WebSocketScope)
         return {
             "message": f"Hello {data}",
             "my resource": my_resource,
@@ -49,7 +51,6 @@ if not skip:
 
 
 @pytest.mark.parametrize("method", ["static", "static-ref", "dynamic"])
-@pytest.mark.asyncio
 async def test_http(unused_tcp_port: int, method: str) -> None:
     route_handlers = []
     components = {}
@@ -60,22 +61,23 @@ async def test_http(unused_tcp_port: int, method: str) -> None:
     else:
 
         class RouteComponent(Component):
-            async def start(self, ctx: Context) -> None:
-                app = require_resource(Litestar)
+            async def start(self) -> None:
+                app = get_resource_nowait(Litestar)
                 app.register(root)
 
         components["myroutes"] = {"type": RouteComponent}
 
-    async with Context() as ctx, AsyncClient() as http:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await LitestarComponent(
-            components=components, port=unused_tcp_port, route_handlers=route_handlers
-        ).start(ctx)
+    async with Context(), AsyncClient() as http:
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            LitestarComponent,
+            {"components": components, "port": unused_tcp_port, "route_handlers": route_handlers},
+        )
 
         # Ensure that the application got added as a resource
-        asgi_app = ctx.require_resource(ASGI3Application)
-        litestar_app = ctx.require_resource(Litestar)
+        asgi_app = get_resource_nowait(ASGI3Application)
+        litestar_app = get_resource_nowait(Litestar)
         assert litestar_app is asgi_app
 
         response = await http.get(
@@ -90,7 +92,6 @@ async def test_http(unused_tcp_port: int, method: str) -> None:
 
 
 @pytest.mark.parametrize("method", ["static", "dynamic"])
-@pytest.mark.asyncio
 async def test_ws(unused_tcp_port: int, method: str) -> None:
     route_handlers = []
     components = {}
@@ -99,27 +100,28 @@ async def test_ws(unused_tcp_port: int, method: str) -> None:
     else:
 
         class RouteComponent(Component):
-            async def start(self, ctx: Context) -> None:
-                app = require_resource(Litestar)
+            async def start(self) -> None:
+                app = get_resource_nowait(Litestar)
                 app.register(ws_root)
 
         components = {"myroutes": {"type": RouteComponent}}
 
-    async with Context() as ctx:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await LitestarComponent(
-            components=components, port=unused_tcp_port, route_handlers=route_handlers
-        ).start(ctx)
+    async with Context():
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            LitestarComponent,
+            {"components": components, "port": unused_tcp_port, "route_handlers": route_handlers},
+        )
 
         # Ensure that the application got added as a resource
-        asgi_app = ctx.require_resource(ASGI3Application)
-        litestar_app = ctx.require_resource(Litestar)
+        asgi_app = get_resource_nowait(ASGI3Application)
+        litestar_app = get_resource_nowait(Litestar)
         assert litestar_app is asgi_app
 
-        async with websockets.connect(f"ws://localhost:{unused_tcp_port}/ws") as ws:
-            await ws.send("World")
-            response = json.loads(await ws.recv())
+        async with aconnect_ws(f"http://localhost:{unused_tcp_port}/ws") as ws:
+            await ws.send_text("World")
+            response = json.loads(await ws.receive_text())
             assert response == {
                 "message": "Hello World",
                 "my resource": "foo",
@@ -128,7 +130,6 @@ async def test_ws(unused_tcp_port: int, method: str) -> None:
 
 
 @pytest.mark.parametrize("method", ["direct", "dict"])
-@pytest.mark.asyncio
 async def test_middleware(unused_tcp_port: int, method: str) -> None:
     middlewares: Sequence[Callable[..., ASGI3Application] | dict[str, Any]]
     if method == "direct":
@@ -146,10 +147,11 @@ async def test_middleware(unused_tcp_port: int, method: str) -> None:
     async def root() -> str:
         return "Hello World"
 
-    async with Context() as ctx, AsyncClient() as http:
-        await LitestarComponent(
-            port=unused_tcp_port, middlewares=middlewares, route_handlers=[root]
-        ).start(ctx)
+    async with Context(), AsyncClient() as http:
+        await start_component(
+            LitestarComponent,
+            {"port": unused_tcp_port, "middlewares": middlewares, "route_handlers": [root]},
+        )
 
         # Ensure that the application responds correctly to an HTTP request
         response = await http.get(
@@ -159,7 +161,6 @@ async def test_middleware(unused_tcp_port: int, method: str) -> None:
         assert response.text == "Hello Middleware"
 
 
-@pytest.mark.asyncio
 async def test_dependency_injection(unused_tcp_port: int) -> None:
     @get(
         "/",
@@ -169,21 +170,23 @@ async def test_dependency_injection(unused_tcp_port: int) -> None:
             "another_resource": AsphaltProvide(str, "another"),
         },
     )
-    async def root(request: Request, my_resource: str, another_resource: str) -> Dict[str, Any]:  # noqa: UP006
-        my_resource = require_resource(str)
-        another_resource = require_resource(str, "another")
-        require_resource(HTTPScope)
-        require_resource(Request)
+    async def root(request: Request, my_resource: str, another_resource: str) -> dict[str, Any]:
+        my_resource = get_resource_nowait(str)
+        another_resource = get_resource_nowait(str, "another")
+        get_resource_nowait(HTTPScope)
+        get_resource_nowait(Request)
         return {
             "message": request.query_params["param"],
             "my resource": my_resource,
             "another resource": another_resource,
         }
 
-    async with Context() as ctx, AsyncClient() as http:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await LitestarComponent(port=unused_tcp_port, route_handlers=[root]).start(ctx)
+    async with Context(), AsyncClient() as http:
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            LitestarComponent, {"port": unused_tcp_port, "route_handlers": [root]}
+        )
 
         response = await http.get(
             f"http://127.0.0.1:{unused_tcp_port}", params={"param": "Hello World"}

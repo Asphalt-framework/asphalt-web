@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from inspect import iscoroutinefunction
 from typing import Any
 
@@ -10,21 +10,24 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_runner import AppRunner, TCPSite
 from asphalt.core import (
-    ContainerComponent,
+    Component,
     Context,
-    context_teardown,
+    add_resource,
     resolve_reference,
+    start_service_task,
 )
+
+from ._utils import ensure_server_running
 
 
 @middleware
 async def asphalt_middleware(request: Request, handler: Callable[..., Awaitable]) -> Response:
-    async with Context() as ctx:
-        ctx.add_resource(request, types=[Request])
+    async with Context():
+        add_resource(request, types=[Request])
         return await handler(request)
 
 
-class AIOHTTPComponent(ContainerComponent):
+class AIOHTTPComponent(Component):
     """
     A component that serves an aiohttp application.
 
@@ -37,15 +40,11 @@ class AIOHTTPComponent(ContainerComponent):
 
     def __init__(
         self,
-        components: dict[str, dict[str, Any] | None] | None = None,
-        *,
         app: Application | str | None = None,
         host: str = "127.0.0.1",
         port: int = 8000,
         middlewares: Sequence[Callable[..., Coroutine[Any, Any, Any]] | dict[str, Any]] = (),
     ) -> None:
-        super().__init__(components)
-
         self.app = resolve_reference(app) or Application()
         self.host = host
         self.port = port
@@ -84,13 +83,13 @@ https://docs.aiohttp.org/en/stable/web_advanced.html#aiohttp-web-middlewares
                 f"middleware must be either a coroutine function or a dict, not {middleware!r}"
             )
 
-    async def start(self, ctx: Context) -> None:
-        ctx.add_resource(self.app)
-        await super().start(ctx)
-        await self.start_server(ctx)
+    async def prepare(self) -> None:
+        add_resource(self.app)
 
-    @context_teardown
-    async def start_server(self, ctx: Context) -> AsyncGenerator[None, Exception | None]:
+    async def start(self) -> None:
+        await self.start_server()
+
+    async def start_server(self) -> None:
         """
         Start the HTTP server.
 
@@ -103,8 +102,5 @@ https://docs.aiohttp.org/en/stable/web_advanced.html#aiohttp-web-middlewares
         runner = AppRunner(self.app)
         await runner.setup()
         site = TCPSite(runner, host=self.host, port=self.port)
-        await site.start()
-
-        yield
-
-        await runner.cleanup()
+        await start_service_task(site.start, name="Aiohttp server", teardown_action=runner.cleanup)
+        await ensure_server_running(self.host, self.port)

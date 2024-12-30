@@ -1,4 +1,4 @@
-from asphalt.core import Component, Context, require_resource
+from asphalt.core import Component, get_resource_nowait
 from litestar import Litestar, get
 
 
@@ -8,5 +8,5 @@ async def root() -> str:
 
 
 class WebRootComponent(Component):
-    async def start(self, ctx: Context) -> None:
-        require_resource(Litestar).register(root)
+    async def start(self) -> None:
+        get_resource_nowait(Litestar).register(root)

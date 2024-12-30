@@ -5,11 +5,20 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 import pytest
-import websockets
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
-from asphalt.core import Component, Context, inject, require_resource, resource
+from asphalt.core import (
+    Component,
+    ComponentStartError,
+    Context,
+    add_resource,
+    get_resource_nowait,
+    inject,
+    resource,
+    start_component,
+)
 from fastapi import FastAPI
 from httpx import AsyncClient
+from httpx_ws import aconnect_ws
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.websockets import WebSocket
@@ -18,17 +27,18 @@ from asphalt.web.fastapi import AsphaltDepends, FastAPIComponent
 
 from .test_asgi3 import TextReplacerMiddleware
 
+pytestmark = pytest.mark.anyio
+
 
 @pytest.mark.parametrize("method", ["static", "dynamic"])
-@pytest.mark.asyncio
 async def test_http(unused_tcp_port: int, method: str):
     async def root(
         request: Request,
         my_resource: str = AsphaltDepends(),
         another_resource: str = AsphaltDepends("another"),
     ) -> Response:
-        require_resource(HTTPScope)
-        require_resource(Request)
+        get_resource_nowait(HTTPScope)
+        get_resource_nowait(Request)
         return JSONResponse(
             {
                 "message": request.query_params["param"],
@@ -45,21 +55,26 @@ async def test_http(unused_tcp_port: int, method: str):
 
         class RouteComponent(Component):
             @inject
-            async def start(self, ctx: Context, app: FastAPI = resource()) -> None:
+            async def start(self, app: FastAPI = resource()) -> None:
                 app.add_api_route("/", root)
 
         components = {"myroutes": {"type": RouteComponent}}
 
-    async with Context() as ctx, AsyncClient() as http:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await FastAPIComponent(components=components, app=application, port=unused_tcp_port).start(
-            ctx
+    async with Context(), AsyncClient() as http:
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            FastAPIComponent,
+            {
+                "components": components,
+                "app": application,
+                "port": unused_tcp_port,
+            },
         )
 
         # Ensure that the application got added as a resource
-        asgi_app = ctx.require_resource(ASGI3Application)
-        fastapi_app = ctx.require_resource(FastAPI)
+        asgi_app = get_resource_nowait(ASGI3Application)
+        fastapi_app = get_resource_nowait(FastAPI)
         assert fastapi_app is asgi_app
 
         response = await http.get(
@@ -74,14 +89,13 @@ async def test_http(unused_tcp_port: int, method: str):
 
 
 @pytest.mark.parametrize("method", ["static", "dynamic"])
-@pytest.mark.asyncio
 async def test_ws(unused_tcp_port: int, method: str):
     async def ws_root(
         websocket: WebSocket,
         my_resource: str = AsphaltDepends(),
         another_resource: str = AsphaltDepends("another"),
     ):
-        require_resource(WebSocketScope)
+        get_resource_nowait(WebSocketScope)
         await websocket.accept()
         message = await websocket.receive_text()
         await websocket.send_json(
@@ -100,26 +114,31 @@ async def test_ws(unused_tcp_port: int, method: str):
 
         class RouteComponent(Component):
             @inject
-            async def start(self, ctx: Context, app: FastAPI = resource()) -> None:
+            async def start(self, app: FastAPI = resource()) -> None:
                 app.add_api_websocket_route("/ws", ws_root)
 
         components = {"myroutes": {"type": RouteComponent}}
 
-    async with Context() as ctx:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await FastAPIComponent(components=components, app=application, port=unused_tcp_port).start(
-            ctx
+    async with Context():
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            FastAPIComponent,
+            {
+                "components": components,
+                "app": application,
+                "port": unused_tcp_port,
+            },
         )
 
         # Ensure that the application got added as a resource
-        asgi_app = ctx.require_resource(ASGI3Application)
-        fastapi_app = ctx.require_resource(FastAPI)
+        asgi_app = get_resource_nowait(ASGI3Application)
+        fastapi_app = get_resource_nowait(FastAPI)
         assert fastapi_app is asgi_app
 
-        async with websockets.connect(f"ws://localhost:{unused_tcp_port}/ws") as ws:
-            await ws.send("World")
-            response = json.loads(await ws.recv())
+        async with aconnect_ws(f"http://localhost:{unused_tcp_port}/ws") as ws:
+            await ws.send_text("World")
+            response = json.loads(await ws.receive_text())
             assert response == {
                 "message": "Hello World",
                 "my resource": "foo",
@@ -127,7 +146,6 @@ async def test_ws(unused_tcp_port: int, method: str):
             }
 
 
-@pytest.mark.asyncio
 async def test_missing_type_annotation():
     async def bad_root(request: Request, bad_resource=AsphaltDepends()) -> Response:
         return Response("never seen")
@@ -135,17 +153,15 @@ async def test_missing_type_annotation():
     application = FastAPI()
     application.add_api_route("/", bad_root)
 
-    async with Context() as ctx:
-        component = FastAPIComponent(app=application)
+    async with Context():
         with pytest.raises(
-            TypeError,
+            ComponentStartError,
             match="Dependency 'bad_resource' in endpoint / is missing a type annotation",
         ):
-            await component.start(ctx)
+            await start_component(FastAPIComponent, {"app": application})
 
 
 @pytest.mark.parametrize("method", ["direct", "dict"])
-@pytest.mark.asyncio
 async def test_middleware(unused_tcp_port: int, method: str):
     middlewares: Sequence[Callable[..., ASGI3Application] | dict[str, Any]]
     if method == "direct":
@@ -164,10 +180,11 @@ async def test_middleware(unused_tcp_port: int, method: str):
 
     application = FastAPI()
     application.add_api_route("/", root)
-    async with Context() as ctx, AsyncClient() as http:
-        await FastAPIComponent(
-            port=unused_tcp_port, app=application, middlewares=middlewares
-        ).start(ctx)
+    async with Context(), AsyncClient() as http:
+        await start_component(
+            FastAPIComponent,
+            {"app": application, "port": unused_tcp_port, "middlewares": middlewares},
+        )
 
         # Ensure that the application responds correctly to an HTTP request
         response = await http.get(

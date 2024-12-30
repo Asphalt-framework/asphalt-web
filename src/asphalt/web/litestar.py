@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
-from asphalt.core import Context, require_resource, resolve_reference
+from asphalt.core import Context, add_resource, get_resource_nowait, resolve_reference
 from litestar import Litestar, Request
 from litestar.middleware import AbstractMiddleware
 from litestar.types import ControllerRouterHandler, Receive, Scope, Send
@@ -30,18 +30,18 @@ class AsphaltProvide:
     name: str = "default"
 
     async def __call__(self) -> Any:
-        return require_resource(self.cls, self.name)
+        return get_resource_nowait(self.cls, self.name)
 
 
 class AsphaltMiddleware(AbstractMiddleware):
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        async with Context() as ctx:
+        async with Context():
             if scope["type"] == "http":
-                ctx.add_resource(scope, types=[HTTPScope])
-                ctx.add_resource(Request(scope))
+                add_resource(scope, types=[HTTPScope])
+                add_resource(Request(scope))
             elif scope["type"] == "websocket":
-                ctx.add_resource(scope, types=[WebSocketScope])
-                ctx.add_resource(Request(scope))
+                add_resource(scope, types=[WebSocketScope])
+                add_resource(Request(scope))
 
             await self.app(scope, receive, send)
 
@@ -76,7 +76,6 @@ class LitestarComponent(ASGIComponent[Litestar]):
 
     def __init__(
         self,
-        components: dict[str, dict[str, Any] | None] | None = None,
         *,
         host: str = "127.0.0.1",
         port: int = 8000,
@@ -88,7 +87,7 @@ class LitestarComponent(ASGIComponent[Litestar]):
         config_.setdefault("debug", __debug__)
         config_["logging_config"] = None
         app = Litestar(**config_)
-        super().__init__(components, app=app, middlewares=middlewares, host=host, port=port)
+        super().__init__(app=app, middlewares=middlewares, host=host, port=port)
 
         for item in route_handlers:
             if isinstance(item, str):

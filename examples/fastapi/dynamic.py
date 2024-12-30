@@ -1,4 +1,4 @@
-from asphalt.core import Component, Context, inject, resource
+from asphalt.core import Component, inject, resource
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
@@ -9,5 +9,5 @@ async def root() -> str:
 
 class WebRootComponent(Component):
     @inject
-    async def start(self, ctx: Context, app: FastAPI = resource()) -> None:
+    async def start(self, app: FastAPI = resource()) -> None:
         app.add_api_route("/", root, response_class=PlainTextResponse)

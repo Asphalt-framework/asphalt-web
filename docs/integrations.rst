@@ -148,8 +148,8 @@ Litestar has its own dependency injection system which can optionally be used to
 Asphalt resources in web endpoints. This can be done by using
 :class:`~asphalt.web.litestar.AsphaltProvide` instead of :class:`~litestar.di.Provide`::
 
-    from litestar import get
     from asphalt.web.litestar import AsphaltProvide
+    from litestar import get
 
     @get("/endpointname", dependencies={"myresource": AsphaltProvide(SomeConnection)})
     async def myendpoint(myresource: SomeConnection) -> None:
@@ -157,12 +157,12 @@ Asphalt resources in web endpoints. This can be done by using
 
 This would be roughly equivalent to::
 
+    from asphalt.core import get_resource_nowait
     from litestar import get
-    from asphalt.core import require_resource
 
     @get("/endpointname")
     async def myendpoint() -> None:
-        myresource = require_resource(SomeConnection)
+        myresource = get_resource_nowait(SomeConnection)
         ...
 
 Resources available on the global context:

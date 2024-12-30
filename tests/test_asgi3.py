@@ -6,7 +6,6 @@ from typing import Any, cast
 from urllib.parse import parse_qs
 
 import pytest
-import websockets
 from asgiref.typing import (
     ASGI3Application,
     ASGIReceiveCallable,
@@ -16,10 +15,21 @@ from asgiref.typing import (
     Scope,
     WebSocketScope,
 )
-from asphalt.core import Context, current_context, inject, resource
+from asphalt.core import (
+    Context,
+    add_resource,
+    current_context,
+    get_resource_nowait,
+    inject,
+    resource,
+    start_component,
+)
 from httpx import AsyncClient
+from httpx_ws import aconnect_ws
 
 from asphalt.web.asgi3 import ASGIComponent
+
+pytestmark = pytest.mark.anyio
 
 
 @inject
@@ -30,8 +40,16 @@ async def application(
     my_resource: str = resource(),
     another_resource: str = resource("another"),
 ):
-    if scope["type"] == "http":
-        current_context().require_resource(HTTPScope)
+    if scope["type"] == "lifespan":
+        while True:
+            message = await receive()
+            if message["type"] == "lifespan.startup":
+                await send({"type": "lifespan.startup.complete"})
+            elif message["type"] == "lifespan.shutdown":
+                await send({"type": "lifespan.shutdown.complete"})
+                return
+    elif scope["type"] == "http":
+        current_context().get_resource_nowait(HTTPScope)
         query = parse_qs(cast(bytes, scope["query_string"]))
         await receive()
 
@@ -61,7 +79,7 @@ async def application(
             }
         )
     elif scope["type"] == "websocket":
-        current_context().require_resource(WebSocketScope)
+        current_context().get_resource_nowait(WebSocketScope)
         await receive()  # Receive connection
         await send(  # Accept connection
             {
@@ -114,15 +132,20 @@ class TextReplacerMiddleware:
         await self.app(scope, receive, wrapped_send)
 
 
-@pytest.mark.asyncio
 async def test_http(unused_tcp_port: int):
-    async with Context() as ctx, AsyncClient() as http:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await ASGIComponent(app=application, port=unused_tcp_port).start(ctx)
+    async with Context(), AsyncClient() as http:
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            ASGIComponent,
+            {
+                "app": application,
+                "port": unused_tcp_port,
+            },
+        )
 
         # Ensure that the application got added as a resource
-        ctx.require_resource(ASGI3Application)
+        get_resource_nowait(ASGI3Application)
 
         # Ensure that the application responds correctly to an HTTP request
         response = await http.get(
@@ -136,20 +159,25 @@ async def test_http(unused_tcp_port: int):
         }
 
 
-@pytest.mark.asyncio
 async def test_ws(unused_tcp_port: int):
-    async with Context() as ctx:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await ASGIComponent(app=application, port=unused_tcp_port).start(ctx)
+    async with Context():
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            ASGIComponent,
+            {
+                "app": application,
+                "port": unused_tcp_port,
+            },
+        )
 
         # Ensure that the application got added as a resource
-        ctx.require_resource(ASGI3Application)
+        get_resource_nowait(ASGI3Application)
 
         # Ensure that the application works correctly with a websocket connection
-        async with websockets.connect(f"ws://localhost:{unused_tcp_port}") as ws:
-            await ws.send("World")
-            response = json.loads(await ws.recv())
+        async with aconnect_ws(f"http://localhost:{unused_tcp_port}/ws") as ws:
+            await ws.send_text("World")
+            response = json.loads(await ws.receive_text())
             assert response == {
                 "message": "Hello World",
                 "my resource": "foo",
@@ -158,7 +186,6 @@ async def test_ws(unused_tcp_port: int):
 
 
 @pytest.mark.parametrize("method", ["direct", "dict"])
-@pytest.mark.asyncio
 async def test_middleware(unused_tcp_port: int, method: str):
     middlewares: Sequence[Callable[..., ASGI3Application] | dict[str, Any]]
     if method == "direct":
@@ -172,15 +199,20 @@ async def test_middleware(unused_tcp_port: int, method: str):
             }
         ]
 
-    async with Context() as ctx, AsyncClient() as http:
-        ctx.add_resource("foo")
-        ctx.add_resource("bar", name="another")
-        await ASGIComponent(app=application, port=unused_tcp_port, middlewares=middlewares).start(
-            ctx
+    async with Context(), AsyncClient() as http:
+        add_resource("foo")
+        add_resource("bar", name="another")
+        await start_component(
+            ASGIComponent,
+            {
+                "middlewares": middlewares,
+                "app": application,
+                "port": unused_tcp_port,
+            },
         )
 
         # Ensure that the application got added as a resource
-        ctx.require_resource(ASGI3Application)
+        get_resource_nowait(ASGI3Application)
 
         # Ensure that the application responds correctly to an HTTP request
         response = await http.get(
