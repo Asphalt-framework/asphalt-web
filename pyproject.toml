@@ -29,7 +29,7 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "asphalt @ git+https://github.com/asphalt-framework/asphalt@5.0",
+    "asphalt @ git+https://github.com/asphalt-framework/asphalt",
 ]
 dynamic = ["version"]
 
@@ -99,7 +99,7 @@ version_scheme = "post-release"
 local_scheme = "dirty-tag"
 
 [tool.pytest.ini_options]
-addopts = "-rsx --tb=short"
+addopts = ["-rsfE", "--tb=short"]
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -108,13 +108,16 @@ line-length = 99
 [tool.ruff.lint]
 extend-select = [
     "ASYNC",        # flake8-async
-    "W",            # pycodestyle warnings
     "G",            # flake8-logging-format
     "I",            # isort
     "ISC",          # flake8-implicit-str-concat
     "PGH",          # pygrep-hooks
-    "RUF100",       # unused noqa (yesqa)
+    "RUF",          # Ruff-specific rules
     "UP",           # pyupgrade
+    "W",            # pycodestyle warnings
+]
+ignore = [
+    "RUF003",
 ]
 
 [tool.ruff.lint.isort]
@@ -133,17 +136,18 @@ branch = true
 show_missing = true
 
 [tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = py39, py310, py311, py312, pypy3
+env_list = ["py39", "py310", "py311", "py312", "py313", "pypy3"]
 skip_missing_interpreters = true
-minversion = 4.0
 
-[testenv]
-extras = test
-commands = python -m pytest {posargs}
+[tool.tox.env_run_base]
+commands = [["python", "-m", "pytest", { replace = "posargs", extend = true }]]
+package = "editable"
+extras = ["test"]
 
-[testenv:docs]
-extras = doc
-commands = sphinx-build -n docs build/sphinx
-"""
+[tool.tox.env.pyright]
+deps = ["pyright"]
+commands = [["pyright", "--verifytypes", "asphalt.exceptions"]]
+
+[tool.tox.env.docs]
+commands = [["sphinx-build", "-W", "-n", "docs", "build/sphinx", { replace = "posargs", extend = true }]]
+extras = ["doc"]

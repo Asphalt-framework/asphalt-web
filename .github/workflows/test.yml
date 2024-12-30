@@ -23,7 +23,9 @@ jobs:
         cache: pip
         cache-dependency-path: pyproject.toml
     - name: Install dependencies
-      run: pip install -e .[test]
+      run: |
+        pip install git+https://github.com/asphalt-framework/asphalt.git
+        pip install -e .[test]
     - name: Test with pytest
       run: coverage run -m pytest -v
     - name: Generate coverage report
