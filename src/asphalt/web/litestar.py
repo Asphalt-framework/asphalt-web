@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
-from asphalt.core import Context, require_resource, resolve_reference
 from litestar import Litestar, Request
 from litestar.middleware import AbstractMiddleware
 from litestar.types import ControllerRouterHandler, Receive, Scope, Send
 
+from asphalt.core import Context, require_resource, resolve_reference
 from asphalt.web.asgi3 import ASGIComponent
 
 

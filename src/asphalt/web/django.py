@@ -3,10 +3,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from asgiref.typing import ASGI3Application, HTTPScope
-from asphalt.core import Context
 from django.core.handlers.asgi import ASGIHandler, ASGIRequest
 from django.http import HttpRequest, HttpResponse
 from django.utils.decorators import async_only_middleware
+
+from asphalt.core import Context
 
 from .asgi3 import ASGIComponent
 
