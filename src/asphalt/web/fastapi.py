@@ -6,9 +6,10 @@ from inspect import Signature, signature
 from typing import Any, get_type_hints
 
 from asgiref.typing import ASGI3Application
-from asphalt.core import Context, require_resource, resolve_reference
 from fastapi import Depends, FastAPI
 from fastapi.routing import APIRoute, APIWebSocketRoute
+
+from asphalt.core import Context, require_resource, resolve_reference
 
 from .asgi3 import ASGIComponent
 from .starlette import AsphaltMiddleware
