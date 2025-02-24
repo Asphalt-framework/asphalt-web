@@ -15,13 +15,14 @@ from asgiref.typing import (
     Scope,
     WebSocketScope,
 )
+from uvicorn import Config
+
 from asphalt.core import (
     ContainerComponent,
     Context,
     context_teardown,
     resolve_reference,
 )
-from uvicorn import Config
 
 T_Application = TypeVar("T_Application", bound=ASGI3Application)
 

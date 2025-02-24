@@ -4,8 +4,9 @@ import json
 
 import pytest
 import websockets
-from asphalt.core import Component, Context, inject, require_resource, resource
 from httpx import AsyncClient
+
+from asphalt.core import Component, Context, inject, require_resource, resource
 
 try:
     from aiohttp.abc import Request

@@ -1,5 +1,6 @@
-from asphalt.core import Component, Context, require_resource
 from litestar import Litestar, get
+
+from asphalt.core import Component, Context, require_resource
 
 
 @get("/")

@@ -16,9 +16,9 @@ from asgiref.typing import (
     Scope,
     WebSocketScope,
 )
-from asphalt.core import Context, current_context, inject, resource
 from httpx import AsyncClient
 
+from asphalt.core import Context, current_context, inject, resource
 from asphalt.web.asgi3 import ASGIComponent
 
 

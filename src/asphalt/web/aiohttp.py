@@ -9,6 +9,7 @@ from aiohttp.web_middlewares import middleware
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 from aiohttp.web_runner import AppRunner, TCPSite
+
 from asphalt.core import (
     ContainerComponent,
     Context,
