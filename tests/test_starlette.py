@@ -7,13 +7,13 @@ from typing import Any
 import pytest
 import websockets
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
-from asphalt.core import Component, Context, inject, require_resource, resource
 from httpx import AsyncClient
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.websockets import WebSocket
 
+from asphalt.core import Component, Context, inject, require_resource, resource
 from asphalt.web.starlette import StarletteComponent
 
 from .test_asgi3 import TextReplacerMiddleware

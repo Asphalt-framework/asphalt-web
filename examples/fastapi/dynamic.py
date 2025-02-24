@@ -1,6 +1,7 @@
-from asphalt.core import Component, Context, inject, resource
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
+
+from asphalt.core import Component, Context, inject, resource
 
 
 async def root() -> str:

@@ -7,8 +7,9 @@ from typing import Any, Dict
 import pytest
 import websockets
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
-from asphalt.core import Component, Context, require_resource
 from httpx import AsyncClient
+
+from asphalt.core import Component, Context, require_resource
 
 try:
     from litestar import Litestar, MediaType, Request, get, websocket_listener

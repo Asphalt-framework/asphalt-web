@@ -1,7 +1,8 @@
-from asphalt.core import Component, Context, inject, resource
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
+
+from asphalt.core import Component, Context, inject, resource
 
 
 async def root(request: Request) -> Response:

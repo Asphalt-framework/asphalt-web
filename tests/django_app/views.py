@@ -1,5 +1,6 @@
-from asphalt.core import inject, resource
 from django.http import HttpRequest, HttpResponse, JsonResponse
+
+from asphalt.core import inject, resource
 
 
 @inject

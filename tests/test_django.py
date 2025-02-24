@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import pytest
 from asgiref.typing import ASGI3Application
-from asphalt.core import Context
 from httpx import AsyncClient
+
+from asphalt.core import Context
 
 try:
     from django.core.handlers.asgi import ASGIHandler

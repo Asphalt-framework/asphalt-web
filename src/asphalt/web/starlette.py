@@ -4,13 +4,13 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from asgiref.typing import ASGI3Application, HTTPScope, WebSocketScope
-from asphalt.core import Context, current_context, resolve_reference
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import Receive, Scope, Send
 
+from asphalt.core import Context, current_context, resolve_reference
 from asphalt.web.asgi3 import ASGIComponent
 
 
